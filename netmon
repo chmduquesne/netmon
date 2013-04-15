@@ -1,0 +1,83 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+#
+#       This program is free software; you can redistribute it and/or modify
+#       it under the terms of the GNU General Public License as published by
+#       the Free Software Foundation; either version 2 of the License, or
+#       (at your option) any later version.
+#
+#       This program is distributed in the hope that it will be useful,
+#       but WITHOUT ANY WARRANTY; without even the implied warranty of
+#       MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#       GNU General Public License for more details.
+#
+#       You should have received a copy of the GNU General Public License
+#       along with this program; if not, write to the Free Software
+#       Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+#       MA 02110-1301, USA.
+#
+from __future__ import with_statement
+
+import gtk
+import gobject
+import subprocess
+import shlex
+
+TIMEOUT = 5
+
+class MainApp:
+    def __init__(self):
+        self.icon = gtk.StatusIcon()
+        self.update_icon()
+        gobject.timeout_add_seconds(TIMEOUT, self.update_icon)
+
+    def get_connected(self, gateway):
+        try:
+            stdout = subprocess.check_output(shlex.split("ping -q -w 3 -c 1 %s" % gateway))
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
+    def get_network_info(self):
+        """
+        In case anyone experiment bugs with this method,
+        http://en.wikipedia.org/wiki/Routing might be handy
+        """
+        interface = None
+        connected = False
+        stdout = subprocess.check_output(shlex.split("ip route show"))
+        for line in stdout.split("\n"):
+            route = line.split(" ")
+            if len(route) >= 5 and (route[0], route[1], route[3]) == ("default", "via", "dev"):
+                gateway = route[2]
+                interface = route[4]
+                connected = self.get_connected(gateway)
+                break
+        return {"interface": interface, "connected": connected}
+
+    def get_icon_name(self, info):
+        if info["connected"]:
+            if info["interface"].startswith('eth'):
+                return 'network-wired'
+            else:
+                return 'network-wireless'
+        else:
+            return 'network-error'
+
+    def update_icon(self):
+        info = self.get_network_info()
+        icon_name = self.get_icon_name(info)
+        self.icon.set_from_icon_name(icon_name)
+        if info["connected"]:
+            tooltip = "Connected on %s" % info["interface"]
+        else:
+            tooltip = "Disconnected"
+        self.icon.set_tooltip_text(tooltip)
+        return True
+
+if __name__ == "__main__":
+    try:
+        MainApp()
+        gtk.main()
+    except KeyboardInterrupt:
+        pass
