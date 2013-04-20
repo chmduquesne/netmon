@@ -20,10 +20,47 @@ from __future__ import with_statement
 
 import gtk
 import gobject
+import os
 import subprocess
-import shlex
 
 TIMEOUT = 5
+
+def default_route():
+    '''returns the interface and the gateway of the default route.'''
+    interface = None
+    stdout = subprocess.check_output(['ip', 'route', 'show'])
+    for line in stdout.split('\n'):
+        route = line.split(' ')
+        if len(route) >= 5 and (route[0], route[1], route[3]) == ('default', 'via', 'dev'):
+            gateway = route[2]
+            interface = route[4]
+            break
+    return (interface, gateway)
+
+def ping(addr):
+    '''return True if we can ping the given address, False otherwise'''
+    try:
+        subprocess.check_output(['ping', '-q', '-w', '3', '-c', '1', addr])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def wpa_status():
+    '''returns the output of wpa_cli status.'''
+    return subprocess.check_output(['wpa_cli', 'status'])
+
+def interface_type(iface):
+    '''http://stackoverflow.com/questions/4475420/detect-network-connection-type-in-linux/16060638#16060638)'''
+    res = 'wired'
+    iface_dir = '/sys/class/net/%s' % iface
+    with open(iface_dir + '/type') as f:
+        line = f.next().strip()
+        if line == '1':
+            res = 'wired'
+            if ('wireless' in os.listdir(iface_dir) or
+                'phy80211' in os.listdir(iface_dir)):
+                res = 'wireless'
+    return res
 
 class MainApp:
     def __init__(self):
@@ -31,51 +68,43 @@ class MainApp:
         self.update_icon()
         gobject.timeout_add_seconds(TIMEOUT, self.update_icon)
 
-    def get_connected(self, gateway):
-        try:
-            stdout = subprocess.check_output(shlex.split("ping -q -w 3 -c 1 %s" % gateway))
-            return True
-        except subprocess.CalledProcessError:
-            return False
-
     def get_network_info(self):
-        """
-        In case anyone experiment bugs with this method,
-        http://en.wikipedia.org/wiki/Routing might be handy
-        """
-        interface = None
-        connected = False
-        stdout = subprocess.check_output(shlex.split("ip route show"))
-        for line in stdout.split("\n"):
-            route = line.split(" ")
-            if len(route) >= 5 and (route[0], route[1], route[3]) == ("default", "via", "dev"):
-                gateway = route[2]
-                interface = route[4]
-                connected = self.get_connected(gateway)
-                break
-        return {"interface": interface, "connected": connected}
+        (interface, gateway) = default_route()
+        connected = ping(gateway)
+        return {'interface': interface, 'connected': connected}
 
-    def get_icon_name(self, info):
-        if info["connected"]:
-            if info["interface"].startswith('eth'):
-                return 'network-wired'
-            else:
-                return 'network-wireless'
+    def get_icon_name(self, interface, connected):
+        suffix = interface_type(interface)
+        if connected:
+            return 'network-%s' % suffix
         else:
             return 'network-error'
 
+    def get_tooltip(self, interface, connected):
+        status = '[wired-ifplugd]'
+        if interface_type(interface) == 'wireless':
+            status = wpa_status()
+        if not connected:
+            res = '\n'.join(['Disconnected', status])
+        else:
+            res = '\n'.join(['Connected on %s' % interface, status])
+        return res
+
     def update_icon(self):
         info = self.get_network_info()
-        icon_name = self.get_icon_name(info)
+        icon_name = self.get_icon_name(
+                info['interface'],
+                info['connected']
+                )
         self.icon.set_from_icon_name(icon_name)
-        if info["connected"]:
-            tooltip = "Connected on %s" % info["interface"]
-        else:
-            tooltip = "Disconnected"
+        tooltip = self.get_tooltip(
+                info['interface'],
+                info['connected']
+                )
         self.icon.set_tooltip_text(tooltip)
         return True
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     try:
         MainApp()
         gtk.main()
