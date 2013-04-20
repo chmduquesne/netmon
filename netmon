@@ -28,6 +28,7 @@ TIMEOUT = 5
 def default_route():
     '''returns the interface and the gateway of the default route.'''
     interface = None
+    gateway = None
     stdout = subprocess.check_output(['ip', 'route', 'show'])
     for line in stdout.split('\n'):
         route = line.split(' ')
@@ -47,7 +48,7 @@ def ping(addr):
 
 def wpa_status():
     '''returns the output of wpa_cli status.'''
-    return subprocess.check_output(['wpa_cli', 'status'])
+    return subprocess.check_output(['wpa_cli', 'status']).strip()
 
 def interface_type(iface):
     '''http://stackoverflow.com/questions/4475420/detect-network-connection-type-in-linux/16060638#16060638)'''
@@ -74,20 +75,18 @@ class MainApp:
         return {'interface': interface, 'connected': connected}
 
     def get_icon_name(self, interface, connected):
-        suffix = interface_type(interface)
         if connected:
-            return 'network-%s' % suffix
+            return 'network-%s' % interface_type(interface)
         else:
             return 'network-error'
 
     def get_tooltip(self, interface, connected):
-        status = '[wired-ifplugd]'
-        if interface_type(interface) == 'wireless':
-            status = wpa_status()
         if not connected:
-            res = '\n'.join(['Disconnected', status])
+            res = 'Disconnected'
         else:
-            res = '\n'.join(['Connected on %s' % interface, status])
+            res = 'Connected on %s' % interface
+            if interface_type(interface) == 'wireless':
+                res = '\n'.join([res, wpa_status()])
         return res
 
     def update_icon(self):
