@@ -71,7 +71,9 @@ class MainApp:
 
     def get_network_info(self):
         (interface, gateway) = default_route()
-        connected = ping(gateway)
+        connected = False
+        if gateway:
+            connected = ping(gateway)
         return {'interface': interface, 'connected': connected}
 
     def get_icon_name(self, interface, connected):
