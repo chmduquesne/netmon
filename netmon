@@ -17,34 +17,31 @@
 #       MA 02110-1301, USA.
 #
 from __future__ import with_statement
-
 import gtk
 import gobject
 import os
 import subprocess
+import os.path
 
 TIMEOUT = 5
 
-def default_route():
-    '''returns the interface and the gateway of the default route.'''
+def default_interface():
+    '''returns the interface of the default route'''
     interface = None
-    gateway = None
-    stdout = subprocess.check_output(['ip', 'route', 'show'])
+    stdout = subprocess.check_output(['ip', 'route', 'list', 'scope', 'global'])
     for line in stdout.split('\n'):
         route = line.split(' ')
-        if len(route) >= 5 and (route[0], route[1], route[3]) == ('default', 'via', 'dev'):
-            gateway = route[2]
+        if (len(route) >= 5 and (route[0], route[1], route[3]) == ('default', 'via', 'dev')):
             interface = route[4]
             break
-    return (interface, gateway)
+    return interface
 
-def ping(addr):
-    '''return True if we can ping the given address, False otherwise'''
-    try:
-        subprocess.check_output(['ping', '-q', '-w', '3', '-c', '1', addr])
-        return True
-    except subprocess.CalledProcessError:
-        return False
+def carrier_ok(iface):
+    '''check if the interface is connected'''
+    iface_dir = '/sys/class/net/%s' % iface
+    with open(iface_dir + '/carrier') as f:
+        line = f.next().strip()
+        return line == '1'
 
 def wpa_status():
     '''returns the output of wpa_cli status.'''
@@ -70,10 +67,10 @@ class MainApp:
         gobject.timeout_add_seconds(TIMEOUT, self.update_icon)
 
     def get_network_info(self):
-        (interface, gateway) = default_route()
+        interface = default_interface()
         connected = False
-        if gateway:
-            connected = ping(gateway)
+        if interface:
+            connected = carrier_ok(interface)
         return {'interface': interface, 'connected': connected}
 
     def get_icon_name(self, interface, connected):
@@ -93,15 +90,9 @@ class MainApp:
 
     def update_icon(self):
         info = self.get_network_info()
-        icon_name = self.get_icon_name(
-                info['interface'],
-                info['connected']
-                )
+        icon_name = self.get_icon_name(info['interface'], info['connected'])
         self.icon.set_from_icon_name(icon_name)
-        tooltip = self.get_tooltip(
-                info['interface'],
-                info['connected']
-                )
+        tooltip = self.get_tooltip(info['interface'], info['connected'])
         self.icon.set_tooltip_text(tooltip)
         return True
 
