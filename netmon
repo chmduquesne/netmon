@@ -22,6 +22,7 @@ import gobject
 import os
 import subprocess
 import os.path
+import re
 
 TIMEOUT = 5
 
@@ -46,6 +47,15 @@ def carrier_ok(iface):
 def wpa_status():
     '''returns the output of wpa_cli status.'''
     return subprocess.check_output(['wpa_cli', 'status']).strip()
+
+def eth_status(iface):
+    stdout = subprocess.check_output(['ip', 'addr', 'show', 'dev', iface])
+    res = ''
+    for line in stdout.split('\n'):
+        m = re.search('(inet6? [^ ]*) ', line)
+        if m:
+            res = '\n'.join([res,m.group(1)])
+    return res
 
 def interface_type(iface):
     '''http://stackoverflow.com/questions/4475420/detect-network-connection-type-in-linux/16060638#16060638)'''
@@ -86,6 +96,8 @@ class MainApp:
             res = 'Connected on %s' % interface
             if interface_type(interface) == 'wireless':
                 res = '\n'.join([res, wpa_status()])
+            elif interface_type(interface) == 'wired':
+                res = '\n'.join([res, eth_status(interface)])
         return res
 
     def update_icon(self):
