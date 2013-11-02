@@ -49,6 +49,7 @@ def wpa_status():
     return subprocess.check_output(['wpa_cli', 'status']).strip()
 
 def eth_status(iface):
+    '''returns the status of the given interface (for the tooltip)'''
     stdout = subprocess.check_output(['ip', 'addr', 'show', 'dev', iface])
     res = ''
     for line in stdout.split('\n'):
